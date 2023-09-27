@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import logging
 
-from api import app
-from config import Configuration
-from dal import JsonFileDatabase
-from dal.schemas import (
+from insightbeam.api import app as _app
+from insightbeam.config import Configuration
+from insightbeam.dal import JsonFileDatabase
+from insightbeam.dal.schemas import (
     Source,
     SourceItem,
     SourceItemAnalysis,
     SourceItemCounterAnalysis,
 )
-from dependency_manager import manager
-from engine.interpreter import Interpreter
-from engine.rssreader import RSSReader
-from engine.search import SearchEngine
+from insightbeam.dependency_manager import manager
+from insightbeam.engine.interpreter import Interpreter
+from insightbeam.engine.rssreader import RSSReader
+from insightbeam.engine.search import SearchEngine
 
 _logger = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ manager.register(interpreter)
 manager.register(sengine)
 
 prime_search_engine(sengine, db)
+app = _app
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run(app)
+    uvicorn.run(_app)

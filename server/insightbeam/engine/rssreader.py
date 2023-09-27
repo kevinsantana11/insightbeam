@@ -6,7 +6,8 @@ from typing import Dict, List, Union
 
 import feedparser
 import newspaper
-from dal.schemas import Source, SourceItem
+
+from insightbeam.dal.schemas import Source, SourceItem
 
 _logger = logging.getLogger(__name__)
 

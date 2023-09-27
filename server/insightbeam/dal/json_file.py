@@ -2,9 +2,8 @@ import json
 import os
 from typing import Any, Callable, Dict, Sequence, Type, Union
 
-from config import Configuration
-
-from .schemas import JsonTable
+from insightbeam.config import Configuration
+from insightbeam.dal.schemas import JsonTable
 
 
 class JsonFileDatabase:

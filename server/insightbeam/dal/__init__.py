@@ -1,3 +1,3 @@
-from .json_file import JsonFileDatabase
+from insightbeam.dal.json_file import JsonFileDatabase
 
 __all__ = ["JsonFileDatabase"]

@@ -1,8 +1,9 @@
 from typing import List
 
-from dal.schemas import Source, SourceItem
-from engine.interpreter import ArticleAnalysis, CounterAnalysis
 from pydantic import BaseModel
+
+from insightbeam.dal.schemas import Source, SourceItem
+from insightbeam.engine.interpreter import ArticleAnalysis, CounterAnalysis
 
 
 class GetSourcesResponse(BaseModel):

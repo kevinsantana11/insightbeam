@@ -4,13 +4,14 @@ import os
 from logging import Logger
 from typing import List
 
-from config import Configuration
-from dal.schemas import SourceItem
 from pydantic import BaseModel
 from whoosh.fields import ID, TEXT, Schema
 from whoosh.index import Index, create_in, exists_in, open_dir
 from whoosh.qparser import OrGroup, QueryParser
 from whoosh.writing import IndexWriter
+
+from insightbeam.config import Configuration
+from insightbeam.dal.schemas import SourceItem
 
 _logger = Logger(__name__)
 

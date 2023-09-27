@@ -7,15 +7,15 @@ from uuid import UUID
 
 import bs4
 from bs4 import ResultSet, Tag
-from config import Configuration
-from dal.schemas import SourceItem
 from langchain.chat_models import ChatOpenAI
 from langchain.chat_models.base import BaseChatModel
 from langchain.schema import HumanMessage, SystemMessage
 from langchain.schema.messages import BaseMessageChunk
 from pydantic import BaseModel
 
-from .search import SearchResult
+from insightbeam.config import Configuration
+from insightbeam.dal.schemas import SourceItem
+from insightbeam.engine.search import SearchResult
 
 _logger = logging.getLogger(__name__)
 

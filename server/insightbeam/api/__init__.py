@@ -3,18 +3,19 @@ import logging
 from typing import List
 from uuid import UUID
 
-from dal import JsonFileDatabase
-from dal.schemas import (
+from fastapi import Body, Depends, FastAPI
+
+from insightbeam.dal import JsonFileDatabase
+from insightbeam.dal.schemas import (
     Source,
     SourceItem,
     SourceItemAnalysis,
     SourceItemCounterAnalysis,
 )
-from dependency_manager import manager as m
-from engine.interpreter import ArticleAnalysis, CounterAnalysis, Interpreter
-from engine.rssreader import RSSReader
-from engine.search import SearchEngine
-from fastapi import Body, Depends, FastAPI
+from insightbeam.dependency_manager import manager as m
+from insightbeam.engine.interpreter import ArticleAnalysis, CounterAnalysis, Interpreter
+from insightbeam.engine.rssreader import RSSReader
+from insightbeam.engine.search import SearchEngine
 
 from . import schemas as sch
 
