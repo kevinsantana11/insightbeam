@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Union
-from uuid import UUID
 
 import bs4
 from bs4 import ResultSet, Tag
@@ -14,7 +13,7 @@ from langchain.schema.messages import BaseMessageChunk
 from pydantic import BaseModel
 
 from insightbeam.config import Configuration
-from insightbeam.dal.schemas import SourceItem
+from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
 from insightbeam.engine.search import SearchResult
 
 _logger = logging.getLogger(__name__)
@@ -54,9 +53,9 @@ class Interpreter:
     <analysis>
         <counters>
             <counter>
-                <original>[One of the original view points being apposed/countered]</original>
-                <counter>[The opposing/counter view point being presented]</counter>
-                <article-id>[article_id for counter-view-point goes here]</article-id>
+                <original>One of the original view points being apposed/countered</original>
+                <other>The opposing/counter view point being presented</other>
+                <article-id>article_id for counter-view-point goes here</article-id>
             </counter>
         </counters>
     </analysis>
@@ -96,7 +95,7 @@ class Interpreter:
             model="gpt-3.5-turbo-16k",
         )
 
-    def _sub_analysis(self, item: SourceItem) -> BaseMessageChunk:
+    def _sub_analysis(self, item: DbSourceItem) -> BaseMessageChunk:
         _logger.info("Generating analysis for (title) (%s)", item.title)
         return self._chat_model.invoke(
             [
@@ -141,8 +140,8 @@ class Interpreter:
             return CounterAnalysis.parse_xml(opposing_view.content)
         return CounterAnalysis(counters=list())
 
-    def analyze(self, items: List[SourceItem]) -> List[ArticleAnalysis]:
-        feed_item_analysis: Dict[UUID, str] = dict()
+    def analyze(self, items: List[DbSourceItem]) -> List[ArticleAnalysis]:
+        feed_item_analysis: Dict[int, str] = dict()
         with ThreadPoolExecutor(max_workers=len(items)) as tpe:
             analysis_tasks = {
                 tpe.submit(self._sub_analysis, item): item.uuid for item in items
@@ -159,7 +158,7 @@ class Interpreter:
             ]
 
             return [
-                ArticleAnalysis(article_uuid=uuid.hex, analysis=analysis)
+                ArticleAnalysis(article_uuid=str(uuid), analysis=analysis)
                 for (uuid, analysis) in uuids_and_reports
                 if analysis is not None
             ]
@@ -214,7 +213,7 @@ class Counter(BaseModel):
     def parse_xml(cls, content: Tag) -> Counter:
         article_id = content.find("article-id").get_text()
         original = content.find("original").get_text()
-        counter = content.find("counter").get_text()
+        counter = content.find("other").get_text()
         return cls(
             article_uuid=article_id,
             original_view_point=original,

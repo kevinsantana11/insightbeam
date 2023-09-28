@@ -7,7 +7,8 @@ from typing import Dict, List, Union
 import feedparser
 import newspaper
 
-from insightbeam.dal.schemas import Source, SourceItem
+from insightbeam.dal.schemas.sql import Source as DbSource
+from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
 
 _logger = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ class RSSReader:
         return article
 
     def load_source_items(
-        self, source: Source, limit: Union[int, None] = None
-    ) -> List[SourceItem]:
+        self, source: DbSource, limit: Union[int, None] = None
+    ) -> List[DbSourceItem]:
         source_items = list()
         feed: Dict = feedparser.parse(source.url)
 
@@ -48,7 +49,7 @@ class RSSReader:
                 try:
                     article = retrieve_article_task.result()
                     if article is not None:
-                        source_item = SourceItem(
+                        source_item = DbSourceItem(
                             title=article.title,
                             url=article.url,
                             content=article.text,

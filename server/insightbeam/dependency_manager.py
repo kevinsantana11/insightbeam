@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, Generator, Union
 
 
 class DependencyManager:
@@ -7,14 +7,31 @@ class DependencyManager:
     def __init__(self):
         self._deps = dict()
 
-    def register(self, instance: object, named: Union[str, None] = None):
-        if named is None:
-            self._deps[type(instance).__name__] = instance
+    def register(
+        self,
+        instance: Union[object, type],
+        named: Union[str, None] = None,
+        supplier: Union[Callable[[], Any], None] = None,
+    ):
+        supplier_func = supplier or (lambda: instance)
+        if named is None and isinstance(instance, type):
+            instance: type = instance
+            self._deps[instance.__name__] = supplier_func
+        elif named is None:
+            self._deps[type(instance).__name__] = supplier_func
         else:
-            self._deps[named] = instance
+            self._deps[named] = supplier_func
 
     def inject(self, class_: type) -> Callable[[], Any]:
-        return lambda: self._deps[class_.__name__]
+        def injector(class_name: str):
+            instance = self._deps[class_name]()
+
+            if isinstance(instance, Generator):
+                return next(instance)
+            else:
+                return instance
+
+        return lambda: injector(class_.__name__)
 
 
 manager = DependencyManager()

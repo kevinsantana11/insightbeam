@@ -2,8 +2,20 @@ from typing import List
 
 from pydantic import BaseModel
 
-from insightbeam.dal.schemas import Source, SourceItem
 from insightbeam.engine.interpreter import ArticleAnalysis, CounterAnalysis
+
+
+class Source(BaseModel):
+    uuid: str
+    url: str
+
+
+class SourceItem(BaseModel):
+    uuid: str
+    title: str
+    content: str
+    url: str
+    source_uuid: str
 
 
 class GetSourcesResponse(BaseModel):

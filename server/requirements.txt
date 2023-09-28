@@ -57,5 +57,6 @@ tqdm==4.66.1
 typing-inspect==0.9.0
 typing_extensions==4.8.0
 urllib3==2.0.5
+uvicorn==0.23.2
 Whoosh==2.7.4
 yarl==1.9.2

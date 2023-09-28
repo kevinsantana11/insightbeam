@@ -11,7 +11,7 @@ from whoosh.qparser import OrGroup, QueryParser
 from whoosh.writing import IndexWriter
 
 from insightbeam.config import Configuration
-from insightbeam.dal.schemas import SourceItem
+from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
 
 _logger = Logger(__name__)
 
@@ -38,12 +38,12 @@ class SearchEngine:
 
         self._parser = QueryParser("content", self._schema, group=OrGroup.factory(0.8))
 
-    def _add_document(self, writer: IndexWriter, item: SourceItem):
+    def _add_document(self, writer: IndexWriter, item: DbSourceItem):
         writer.add_document(
             content=item.content, title=item.title, url=item.url, uuid=str(item.uuid)
         )
 
-    def add_documents(self, items: List[SourceItem]):
+    def add_documents(self, items: List[DbSourceItem]):
         try:
             writer: IndexWriter = self._ix.writer()
             [self._add_document(writer, item) for item in items]

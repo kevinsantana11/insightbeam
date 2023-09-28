@@ -1,9 +1,20 @@
-init:
+init:cp-env-vars mk-data-dir clean
+
+cp-env-vars:
 	cp .default.env .env
+
+mk-data-dir:
+	mkdir -p data/server
+	chmod 777 data/server
+
+clean:
+	rm -rf data/sqlite.db
+
 debug:
-	python -m debugpy --listen 5678 insightbeam
+	python -m debugpy --listen 5678 --wait-for-client -m insightbeam
+
 run:
-	python insightbeam
+	python -m insightbeam
 
 before-precommit:
 	echo "\033[35m== Starting precommit Formatting and analysis... ==\033[0m"

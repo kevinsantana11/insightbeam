@@ -19,6 +19,7 @@ filelock==3.12.4
 flake8==6.1.0
 frozenlist==1.4.0
 greenlet==2.0.2
+h11==0.14.0
 idna==3.4
 isort==5.12.0
 jieba3k==0.35.1
@@ -67,5 +68,6 @@ tqdm==4.66.1
 typing-inspect==0.9.0
 typing_extensions==4.8.0
 urllib3==2.0.5
+uvicorn==0.23.2
 Whoosh==2.7.4
 yarl==1.9.2
