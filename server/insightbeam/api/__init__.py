@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from insightbeam.api import schemas as sch
 from insightbeam.api.schemas import Source, SourceItem
+from insightbeam.common import Article
 from insightbeam.dal.schemas.sql import Source as DbSource
 from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
 from insightbeam.dal.schemas.sql import SourceItemAnalysis as DbSourceItemAnalysis
@@ -64,7 +65,17 @@ def pull_from_sources(
     )
     new_items = [itm for itm in retrieved_items if itm.title in new_item_titles]
 
-    session.add_all(new_items)
+    db_items = [
+        DbSourceItem(
+            title=itm.title,
+            content=itm.content,
+            url=itm.url,
+            source_uuid=source_id
+        )
+        for itm in new_items
+    ]
+
+    session.add_all(db_items)
     session.commit()
 
     _logger.info(f"pulled {len(new_items)} new documents!")
@@ -75,9 +86,9 @@ def pull_from_sources(
                 title=itm.title,
                 content=itm.content,
                 url=itm.url,
-                source_uuid=str(itm.source_uuid),
+                source_uuid=str(source_id),
             )
-            for itm in new_items
+            for itm in db_items
         ]
     )
 
@@ -168,8 +179,10 @@ def _get_analysis(item_id: int, session: Session, interpreter: Interpreter):
             ).where(DbSourceItem.uuid == item_id)
         ).one()
 
-        item = DbSourceItem(
-            uuid=item_id, title=title, content=content, url=url, source_uuid=source_uuid
+        item = Article(
+            url=url,
+            title=title,
+            content=content
         )
         analysis = interpreter.analyze([item])[0]
         analysis_item = DbSourceItemAnalysis(
@@ -196,16 +209,16 @@ def _get_counter_analysis(
     if row is None:
         analysis = _get_analysis(item_id, session, interpreter)
         similar_documents = sengine.search(analysis.analysis.subject)
+        articles = list()
 
-        contents = dict()
         for doc in similar_documents:
-            (content,) = session.execute(
-                select(DbSourceItem.content).where(
+            (content, url) = session.execute(
+                select(DbSourceItem.content, DbSourceItem.url).where(
                     DbSourceItem.uuid == int(doc.article_uuid)
                 )
             ).one()
-            contents[doc.article_uuid] = content
-        analysis = interpreter.counter_analysis(analysis, similar_documents, contents)
+            articles.append(Article(title=doc.article_title, content=content, url=url))
+        analysis = interpreter.counter_analysis(analysis, articles)
         analysis_item = DbSourceItemCounterAnalysis(
             analysis=analysis.model_dump_json(), source_item_uuid=item_id
         )

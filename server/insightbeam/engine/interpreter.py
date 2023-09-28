@@ -13,8 +13,8 @@ from langchain.schema.messages import BaseMessageChunk
 from pydantic import BaseModel
 
 from insightbeam.config import Configuration
-from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
-from insightbeam.engine.search import SearchResult
+from insightbeam.common import Article
+
 
 _logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class Interpreter:
             <counter>
                 <original>One of the original view points being apposed/countered</original>
                 <other>The opposing/counter view point being presented</other>
-                <article-id>article_id for counter-view-point goes here</article-id>
+                <article-url>article_url for counter-view-point goes here</article-url>
             </counter>
         </counters>
     </analysis>
@@ -66,7 +66,7 @@ class Interpreter:
     * Under the `Points` section, there should be one to many points each starting with `*` and separated by newlines.
     * There will be a section called `Related` under which each related article will be provided sepearated by two
     newlines.
-    * Each article provided will have an `article_id` property whose value should be a non null and non empty string.
+    * Each article provided will have an `article_url` property whose value should be a non null and non empty string.
     * Each article provided will have an content` property which value should be a non null and non empty string.
 
     Only include counter/opposing views in the analysis any that aren't can be ignored.
@@ -86,7 +86,7 @@ class Interpreter:
     """
 
     _point_template = "* {point}"
-    _related_article_template = "article_id: {article_id}\ncontent: {content}"
+    _related_article_template = "article_url: {url}\ncontent: {content}"
 
     def __init__(self, cfg: Configuration):
         self._chat_model = ChatOpenAI(
@@ -95,7 +95,7 @@ class Interpreter:
             model="gpt-3.5-turbo-16k",
         )
 
-    def _sub_analysis(self, item: DbSourceItem) -> BaseMessageChunk:
+    def _sub_analysis(self, item: Article) -> BaseMessageChunk:
         _logger.info("Generating analysis for (title) (%s)", item.title)
         return self._chat_model.invoke(
             [
@@ -109,8 +109,7 @@ class Interpreter:
     def counter_analysis(
         self,
         article_analysis: ArticleAnalysis,
-        relevant: List[SearchResult],
-        contents: Dict[str, str],
+        relevant: List[Article],
     ) -> CounterAnalysis:
         points = "\n".join(
             [
@@ -121,7 +120,7 @@ class Interpreter:
         related = "\n\n".join(
             [
                 self._related_article_template.format(
-                    article_id=rel.article_uuid, content=contents.get(rel.article_uuid)
+                    url=rel.url, content=rel.content
                 )
                 for rel in relevant
             ]
@@ -140,26 +139,26 @@ class Interpreter:
             return CounterAnalysis.parse_xml(opposing_view.content)
         return CounterAnalysis(counters=list())
 
-    def analyze(self, items: List[DbSourceItem]) -> List[ArticleAnalysis]:
+    def analyze(self, items: List[Article]) -> List[ArticleAnalysis]:
         feed_item_analysis: Dict[int, str] = dict()
         with ThreadPoolExecutor(max_workers=len(items)) as tpe:
             analysis_tasks = {
-                tpe.submit(self._sub_analysis, item): item.uuid for item in items
+                tpe.submit(self._sub_analysis, item): item.url for item in items
             }
 
             for analysis_task in as_completed(analysis_tasks):
-                uuid = analysis_tasks[analysis_task]
+                url = analysis_tasks[analysis_task]
                 response: BaseMessageChunk = analysis_task.result()
-                feed_item_analysis[uuid] = response.content
+                feed_item_analysis[url] = response.content
 
-            uuids_and_reports = [
-                (uuid, Analysis.parse_xml(analysis))
-                for (uuid, analysis) in feed_item_analysis.items()
+            url_and_reports = [
+                (url, Analysis.parse_xml(analysis))
+                for (url, analysis) in feed_item_analysis.items()
             ]
 
             return [
-                ArticleAnalysis(article_uuid=str(uuid), analysis=analysis)
-                for (uuid, analysis) in uuids_and_reports
+                ArticleAnalysis(article_url=url, analysis=analysis)
+                for (url, analysis) in url_and_reports
                 if analysis is not None
             ]
 
@@ -200,22 +199,22 @@ class Analysis(BaseModel):
 
 
 class ArticleAnalysis(BaseModel):
-    article_uuid: str
+    article_url: str
     analysis: Analysis
 
 
 class Counter(BaseModel):
-    article_uuid: str
+    article_url: str
     original_view_point: str
     counter_view_point: str
 
     @classmethod
     def parse_xml(cls, content: Tag) -> Counter:
-        article_id = content.find("article-id").get_text()
+        article_url = content.find("article-url").get_text()
         original = content.find("original").get_text()
         counter = content.find("other").get_text()
         return cls(
-            article_uuid=article_id,
+            article_uuid=article_url,
             original_view_point=original,
             counter_view_point=counter,
         )
