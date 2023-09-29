@@ -2,7 +2,7 @@ from typing import List
 
 from pydantic import BaseModel
 
-from insightbeam.engine.interpreter import ArticleAnalysis, CounterAnalysis
+from insightbeam.engine.interpreter import ArticleAnalysis
 
 
 class Source(BaseModel):
@@ -32,6 +32,7 @@ class CreateSourceResponse(BaseModel):
 
 class PullSourcesResponse(BaseModel):
     new_items: List[SourceItem]
+    failed: List[str]
 
 
 class GetSourceItemsResponse(BaseModel):
@@ -44,7 +45,3 @@ class GetSourceItemResponse(BaseModel):
 
 class GetSourceItemAnalysisResponse(BaseModel):
     analysis: ArticleAnalysis
-
-
-class GetSourceItemCounterResponse(BaseModel):
-    analysis: CounterAnalysis

@@ -12,7 +12,7 @@ from insightbeam.dal.schemas.sql import get_session_supplier, initialize_engine
 from insightbeam.dependency_manager import manager
 from insightbeam.engine.interpreter import Interpreter
 from insightbeam.engine.rssreader import RSSReader
-from insightbeam.engine.search import SearchEngine
+from insightbeam.engine.search import Input, SearchEngine
 
 _logger = logging.getLogger(__name__)
 
@@ -24,20 +24,16 @@ def prime_search_engine(sengine: SearchEngine, session: Session):
             DbSourceItem.title,
             DbSourceItem.content,
             DbSourceItem.url,
-            DbSourceItem.source_uuid,
         )
     )
     sengine.add_documents(
         [
-            DbSourceItem(
-                uuid=uuid,
-                title=title,
-                content=content,
-                url=url,
-                source_uuid=source_uuid,
-            )
-            for (uuid, title, content, url, source_uuid) in results
-        ]
+            DbSourceItem(uuid=uuid, title=title, content=content, url=url)
+            for (uuid, title, content, url) in results
+        ],
+        lambda item: Input(
+            uuid=str(item.uuid), url=item.url, title=item.title, content=item.content
+        ),
     )
     _logger.info("Primed search engine!")
 
@@ -56,7 +52,7 @@ setup_logging(cfg)
 db_engine = initialize_engine(cfg)
 interpreter = Interpreter(cfg)
 sengine = SearchEngine(cfg)
-reader = RSSReader()
+reader = RSSReader(cfg)
 
 manager.register(reader)
 manager.register(interpreter)
@@ -70,4 +66,4 @@ app = _app
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app)
+    uvicorn.run(app, host=cfg.host_name, port=cfg.port)

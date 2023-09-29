@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Union
 
@@ -12,9 +13,8 @@ from langchain.schema import HumanMessage, SystemMessage
 from langchain.schema.messages import BaseMessageChunk
 from pydantic import BaseModel
 
-from insightbeam.config import Configuration
 from insightbeam.common import Article
-
+from insightbeam.config import Configuration
 
 _logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class Interpreter:
         </counters>
     </analysis>
 
-    If any of the rules below fail, simply respond with only: `{fail_token}`.
+    If any of the rules below fail, simply respond with only: `{fail_token}` as the entire response message.
     Rules:
     * Subject should be a non empty string.
     * Under the `Points` section, there should be one to many points each starting with `*` and separated by newlines.
@@ -87,11 +87,14 @@ class Interpreter:
 
     _point_template = "* {point}"
     _related_article_template = "article_url: {url}\ncontent: {content}"
+    _sub_analysis_err_msg_header = "There was an error retrieving the sub analysis"
+    _sub_analysis_err_msg_fmt = "{header}, error: [{error}]"
 
     def __init__(self, cfg: Configuration):
         self._chat_model = ChatOpenAI(
             temperature=0.2,
             openai_api_key=cfg.openai_api_key,
+            request_timeout=cfg.dep_call_timeout,
             model="gpt-3.5-turbo-16k",
         )
 
@@ -110,7 +113,7 @@ class Interpreter:
         self,
         article_analysis: ArticleAnalysis,
         relevant: List[Article],
-    ) -> CounterAnalysis:
+    ) -> ArticleAnalysis:
         points = "\n".join(
             [
                 self._point_template.format(point=vp.point)
@@ -119,28 +122,39 @@ class Interpreter:
         )
         related = "\n\n".join(
             [
-                self._related_article_template.format(
-                    url=rel.url, content=rel.content
-                )
+                self._related_article_template.format(url=rel.url, content=rel.content)
                 for rel in relevant
             ]
         )
         msg = self._gen_counter_template.format(
             subject=article_analysis.analysis.subject, points=points, related=related
         )
-        opposing_view = self._chat_model.invoke(
-            [
-                SystemMessage(content=self._gen_counter_sys_msg),
-                HumanMessage(content=msg),
-            ]
+        try:
+            opposing_view = self._chat_model.invoke(
+                [
+                    SystemMessage(content=self._gen_counter_sys_msg),
+                    HumanMessage(content=msg),
+                ]
+            )
+
+            if opposing_view.content != self._fail_token:
+                analysis = CounterAnalysis.parse_xml(opposing_view.content)
+                error = None
+            else:
+                raise ValueError("Interpreter returned fail token")
+        except Exception as e:
+            analysis = None
+            error = str(e)
+
+        return ArticleAnalysis(
+            article_url=article_analysis.article_url,
+            analysis=article_analysis.analysis,
+            counter=analysis,
+            error=error,
         )
 
-        if opposing_view != self._fail_token:
-            return CounterAnalysis.parse_xml(opposing_view.content)
-        return CounterAnalysis(counters=list())
-
     def analyze(self, items: List[Article]) -> List[ArticleAnalysis]:
-        feed_item_analysis: Dict[int, str] = dict()
+        sub_analyses: Dict[str, str] = dict()
         with ThreadPoolExecutor(max_workers=len(items)) as tpe:
             analysis_tasks = {
                 tpe.submit(self._sub_analysis, item): item.url for item in items
@@ -148,19 +162,35 @@ class Interpreter:
 
             for analysis_task in as_completed(analysis_tasks):
                 url = analysis_tasks[analysis_task]
-                response: BaseMessageChunk = analysis_task.result()
-                feed_item_analysis[url] = response.content
+                try:
+                    response: BaseMessageChunk = analysis_task.result()
+                    sub_analyses[url] = response.content
+                except Exception as e:
+                    msg = self._sub_analysis_err_msg_fmt.format(
+                        header=self._sub_analysis_err_msg_header, error=e
+                    )
+                    sub_analyses[url] = msg
+            return self._process_raw_analysis(sub_analyses)
 
-            url_and_reports = [
-                (url, Analysis.parse_xml(analysis))
-                for (url, analysis) in feed_item_analysis.items()
-            ]
+    def _process_raw_analysis(self, analyses: Dict[str, str]) -> List[ArticleAnalysis]:
+        processed_analyses = list()
+        for url, analysis in analyses.items():
+            try:
+                if re.match(self._sub_analysis_err_msg_header, analysis):
+                    analysis = None
+                    raise ValueError(analysis)
 
-            return [
-                ArticleAnalysis(article_url=url, analysis=analysis)
-                for (url, analysis) in url_and_reports
-                if analysis is not None
-            ]
+                analysis = Analysis.parse_xml(analysis)
+                error = None
+            except Exception as e:
+                analysis = None
+                error = str(e)
+
+            processed_analyses.append(
+                ArticleAnalysis(article_url=url, analysis=analysis, error=error)
+            )
+
+        return processed_analyses
 
 
 class ViewPoint(BaseModel):
@@ -180,27 +210,18 @@ class Analysis(BaseModel):
     view_points: List[ViewPoint]
 
     @classmethod
-    def parse_xml(cls, content: str) -> Union[Analysis, None]:
-        try:
-            content_soup = bs4.BeautifulSoup(content, features="lxml")
-            analysis_report = content_soup.find("analysis")
-            subject = analysis_report.find("subject").get_text()
-            view_points = cls._parse_xml_viewpoints(
-                analysis_report.find("view-points").find_all("view-point")
-            )
-            return cls(subject=subject, view_points=view_points)
-        except Exception as e:
-            _logger.error("Error parsing xml: %s", e)
-            return None
+    def parse_xml(cls, content: str) -> Analysis:
+        content_soup = bs4.BeautifulSoup(content, features="lxml")
+        analysis_report = content_soup.find("analysis")
+        subject = analysis_report.find("subject").get_text()
+        view_points = cls._parse_xml_viewpoints(
+            analysis_report.find("view-points").find_all("view-point")
+        )
+        return cls(subject=subject, view_points=view_points)
 
     @classmethod
     def _parse_xml_viewpoints(cls, view_points: ResultSet[Any]) -> List[ViewPoint]:
         return [ViewPoint.parse_xml(view_point) for view_point in view_points]
-
-
-class ArticleAnalysis(BaseModel):
-    article_url: str
-    analysis: Analysis
 
 
 class Counter(BaseModel):
@@ -235,3 +256,10 @@ class CounterAnalysis(BaseModel):
     @classmethod
     def _parse_xml_counters(cls, counters: ResultSet[Any]) -> List[Counter]:
         return [Counter.parse_xml(counter) for counter in counters]
+
+
+class ArticleAnalysis(BaseModel):
+    article_url: str
+    analysis: Union[Analysis, None] = None
+    counter: Union[CounterAnalysis, None] = None
+    error: Union[str, None] = None

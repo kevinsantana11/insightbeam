@@ -1,8 +1,9 @@
 import json
 import logging
 
-from fastapi import Body, Depends, FastAPI
+from fastapi import Body, Depends, FastAPI, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
 from insightbeam.api import schemas as sch
@@ -15,7 +16,12 @@ from insightbeam.dal.schemas.sql import (
     SourceItemCounterAnalysis as DbSourceItemCounterAnalysis,
 )
 from insightbeam.dependency_manager import manager as m
-from insightbeam.engine.interpreter import ArticleAnalysis, CounterAnalysis, Interpreter
+from insightbeam.engine.interpreter import (
+    Analysis,
+    ArticleAnalysis,
+    CounterAnalysis,
+    Interpreter,
+)
 from insightbeam.engine.rssreader import RSSReader
 from insightbeam.engine.search import SearchEngine
 
@@ -50,15 +56,19 @@ def pull_from_sources(
     reader: RSSReader = Depends(m.inject(RSSReader)),
     session: Session = Depends(m.inject(Session)),
 ):
-    (source_uuid, url) = session.execute(
-        select(DbSource.uuid, DbSource.url).where(DbSource.uuid == source_id)
-    ).one()
+    try:
+        (source_uuid, url) = session.execute(
+            select(DbSource.uuid, DbSource.url).where(DbSource.uuid == source_id)
+        ).one()
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail=f"Source[id:{source_id}] not found")
+
     current_items = session.execute(
         select(DbSourceItem.uuid, DbSourceItem.title).where(
             DbSourceItem.source_uuid == source_uuid
         )
     )
-    retrieved_items = reader.load_source_items(DbSource(uuid=source_uuid, url=url))
+    (retrieved_items, failed) = reader.load_source_items(url)
 
     new_item_titles = set([itm.title for itm in retrieved_items]) - set(
         [title for (_, title) in current_items]
@@ -67,10 +77,7 @@ def pull_from_sources(
 
     db_items = [
         DbSourceItem(
-            title=itm.title,
-            content=itm.content,
-            url=itm.url,
-            source_uuid=source_id
+            title=itm.title, content=itm.content, url=itm.url, source_uuid=source_id
         )
         for itm in new_items
     ]
@@ -89,12 +96,18 @@ def pull_from_sources(
                 source_uuid=str(source_id),
             )
             for itm in db_items
-        ]
+        ],
+        failed=failed,
     )
 
 
 @app.get("/sources/{source_id}/items", response_model=sch.GetSourceItemsResponse)
 def get_source_items(source_id: int, session: Session = Depends(m.inject(Session))):
+    try:
+        session.execute(select(DbSource.uuid).where(DbSource.uuid == source_id)).one()
+    except NoResultFound:
+        raise HTTPException(status_code=404, detail=f"Source[id:{source_id}] not found")
+
     results = session.execute(
         select(
             DbSourceItem.uuid,
@@ -103,7 +116,8 @@ def get_source_items(source_id: int, session: Session = Depends(m.inject(Session
             DbSourceItem.url,
             DbSourceItem.source_uuid,
         ).where(DbSourceItem.source_uuid == int(source_id))
-    )
+    ).all()
+
     return sch.GetSourceItemsResponse(
         items=[
             SourceItem(
@@ -120,15 +134,20 @@ def get_source_items(source_id: int, session: Session = Depends(m.inject(Session
 
 @app.get("/items/{item_id}", response_model=sch.GetSourceItemResponse)
 def get_source_item(item_id: str, session: Session = Depends(m.inject(Session))):
-    (uuid, title, content, url, source_uuid) = session.execute(
-        select(
-            DbSourceItem.uuid,
-            DbSourceItem.title,
-            DbSourceItem.content,
-            DbSourceItem.url,
-            DbSourceItem.source_uuid,
-        ).where(DbSourceItem.uuid == item_id)
-    ).one()
+    try:
+        (uuid, title, content, url, source_uuid) = session.execute(
+            select(
+                DbSourceItem.uuid,
+                DbSourceItem.title,
+                DbSourceItem.content,
+                DbSourceItem.url,
+                DbSourceItem.source_uuid,
+            ).where(DbSourceItem.uuid == item_id)
+        ).one()
+    except NoResultFound:
+        raise HTTPException(
+            status_code=404, detail=f"item[id:{str(item_id)}] not found"
+        )
 
     return sch.GetSourceItemResponse(
         item=SourceItem(
@@ -151,7 +170,7 @@ def get_source_item_analysis(
     return sch.GetSourceItemAnalysisResponse(analysis=analysis)
 
 
-@app.get("/items/{item_id}/counters", response_model=sch.GetSourceItemCounterResponse)
+@app.get("/items/{item_id}/counters", response_model=sch.GetSourceItemAnalysisResponse)
 def get_source_item_counters(
     item_id: str,
     session: Session = Depends(m.inject(Session)),
@@ -159,7 +178,7 @@ def get_source_item_counters(
     sengine: SearchEngine = Depends(m.inject(SearchEngine)),
 ):
     counter_analysis = _get_counter_analysis(item_id, session, interpreter, sengine)
-    return sch.GetSourceItemCounterResponse(analysis=counter_analysis)
+    return sch.GetSourceItemAnalysisResponse(analysis=counter_analysis)
 
 
 def _get_analysis(item_id: int, session: Session, interpreter: Interpreter):
@@ -170,21 +189,23 @@ def _get_analysis(item_id: int, session: Session, interpreter: Interpreter):
     ).one_or_none()
 
     if row is None:
-        (title, content, url, source_uuid) = session.execute(
-            select(
-                DbSourceItem.title,
-                DbSourceItem.content,
-                DbSourceItem.url,
-                DbSourceItem.source_uuid,
-            ).where(DbSourceItem.uuid == item_id)
-        ).one()
+        try:
+            (title, content, url) = session.execute(
+                select(
+                    DbSourceItem.title,
+                    DbSourceItem.content,
+                    DbSourceItem.url,
+                ).where(DbSourceItem.uuid == item_id)
+            ).one()
+        except NoResultFound:
+            raise HTTPException(status_code=404, detail=f"item[id:{item_id}] not found")
 
-        item = Article(
-            url=url,
-            title=title,
-            content=content
-        )
+        item = Article(url=url, title=title, content=content)
         analysis = interpreter.analyze([item])[0]
+
+        if analysis.error is not None or not isinstance(analysis.analysis, Analysis):
+            raise HTTPException(status_code=503, detail=analysis.model_dump())
+
         analysis_item = DbSourceItemAnalysis(
             analysis=analysis.model_dump_json(), source_item_uuid=item_id
         )
@@ -207,25 +228,36 @@ def _get_counter_analysis(
     ).one_or_none()
 
     if row is None:
-        analysis = _get_analysis(item_id, session, interpreter)
-        similar_documents = sengine.search(analysis.analysis.subject)
+        article_analysis = _get_analysis(item_id, session, interpreter)
+        similar_documents = sengine.search(article_analysis.analysis.subject)
         articles = list()
 
         for doc in similar_documents:
-            (content, url) = session.execute(
-                select(DbSourceItem.content, DbSourceItem.url).where(
-                    DbSourceItem.uuid == int(doc.article_uuid)
+            try:
+                (content, url) = session.execute(
+                    select(DbSourceItem.content, DbSourceItem.url).where(
+                        DbSourceItem.uuid == int(doc.article_uuid)
+                    )
+                ).one()
+            except NoResultFound:
+                raise HTTPException(
+                    status_code=404, detail=f"item[id:{item_id}] not found"
                 )
-            ).one()
+
             articles.append(Article(title=doc.article_title, content=content, url=url))
-        analysis = interpreter.counter_analysis(analysis, articles)
+        analysis = interpreter.counter_analysis(article_analysis, articles)
         analysis_item = DbSourceItemCounterAnalysis(
             analysis=analysis.model_dump_json(), source_item_uuid=item_id
         )
+
+        if analysis.error is not None or not isinstance(
+            analysis.analysis, CounterAnalysis
+        ):
+            raise HTTPException(status_code=503, detail=analysis.model_dump())
 
         session.add(analysis_item)
         session.commit()
     else:
         (analysis_str,) = row
-        analysis = CounterAnalysis(**json.loads(analysis_str))
+        analysis = ArticleAnalysis(**json.loads(analysis_str))
     return analysis

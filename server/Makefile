@@ -8,7 +8,7 @@ mk-data-dir:
 	chmod 777 data/server
 
 clean:
-	rm -rf data/sqlite.db
+	rm -rf data/sqlite.db data/server/sqlite.db
 
 debug:
 	python -m debugpy --listen 5678 --wait-for-client -m insightbeam

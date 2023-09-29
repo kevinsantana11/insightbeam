@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import feedparser
 import newspaper
+
 from insightbeam.common import Article
+from insightbeam.config import Configuration
 
 _logger = logging.getLogger(__name__)
 
@@ -14,11 +16,10 @@ _logger = logging.getLogger(__name__)
 class RSSReader:
     _newspaper_config: newspaper.Config
 
-    def __init__(self):
+    def __init__(self, cfg: Configuration):
         self._newspaper_config = newspaper.Config()
-        self._newspaper_config.browser_user_agent = (
-            "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0a"
-        )
+        self._newspaper_config.request_timeout = cfg.dep_call_timeout
+        self._newspaper_config.browser_user_agent = cfg.browser_agent
 
     def load_source_item(self, url: str) -> newspaper.Article:
         article = newspaper.Article(url=url, config=self._newspaper_config)
@@ -28,8 +29,9 @@ class RSSReader:
 
     def load_source_items(
         self, url: str, limit: Union[int, None] = None
-    ) -> List[Article]:
+    ) -> Tuple[List[Article], List[str]]:
         items = list()
+        failed = list()
         feed: Dict = feedparser.parse(url)
 
         entries: List[Dict] = feed.get("entries", [])
@@ -48,12 +50,11 @@ class RSSReader:
                     article = retrieve_article_task.result()
                     if article is not None:
                         item = Article(
-                            content=article.text,
-                            title=article.title,
-                            url=article.url
+                            content=article.text, title=article.title, url=article.url
                         )
                         items.append(item)
                 except Exception as e:
                     _logger.warn("Error retrieving article for: (url) (%s)", url, e)
-                    pass
-        return items
+                    failed.append(url)
+
+        return (items, failed)
