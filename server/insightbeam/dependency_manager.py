@@ -15,8 +15,8 @@ class DependencyManager:
     ):
         supplier_func = supplier or (lambda: instance)
         if named is None and isinstance(instance, type):
-            instance: type = instance
-            self._deps[instance.__name__] = supplier_func
+            type_: type = instance
+            self._deps[type_.__name__] = supplier_func
         elif named is None:
             self._deps[type(instance).__name__] = supplier_func
         else:

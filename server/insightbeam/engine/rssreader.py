@@ -4,8 +4,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple, Union
 
-import feedparser
-import newspaper
+import feedparser  # type: ignore[import]
+import newspaper  # type: ignore[import]
 
 from insightbeam.common import Article
 from insightbeam.config import Configuration
@@ -22,10 +22,13 @@ class RSSReader:
         self._newspaper_config.browser_user_agent = cfg.browser_agent
 
     def load_source_item(self, url: str) -> newspaper.Article:
-        article = newspaper.Article(url=url, config=self._newspaper_config)
-        article.download()
-        article.parse()
-        return article
+        if url != "":
+            article = newspaper.Article(url=url, config=self._newspaper_config)
+            article.download()
+            article.parse()
+            return article
+        else:
+            ValueError("Cannot retrieve article for an empty string")
 
     def load_source_items(
         self, url: str, limit: Union[int, None] = None
@@ -40,19 +43,23 @@ class RSSReader:
 
         with ThreadPoolExecutor(max_workers=len(entries)) as tpe:
             retrieve_article_tasks = {
-                tpe.submit(self.load_source_item, entry.get("link")): entry.get("link")
+                tpe.submit(self.load_source_item, entry.get("link", "")): entry.get(
+                    "link", ""
+                )
                 for entry in entries
             }
 
             for retrieve_article_task in as_completed(retrieve_article_tasks):
-                url = retrieve_article_tasks[retrieve_article_task]
+                url = retrieve_article_tasks.get(retrieve_article_task, "")
+
+                if not isinstance(url, str) or url == "":
+                    raise ValueError("Cannot retrieve article for an empty string")
                 try:
                     article = retrieve_article_task.result()
-                    if article is not None:
-                        item = Article(
-                            content=article.text, title=article.title, url=article.url
-                        )
-                        items.append(item)
+                    item = Article(
+                        content=article.text, title=article.title, url=article.url
+                    )
+                    items.append(item)
                 except Exception as e:
                     _logger.warn("Error retrieving article for: (url) (%s)", url, e)
                     failed.append(url)

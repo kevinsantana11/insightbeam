@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 
 import bs4
 from bs4 import ResultSet, Tag
@@ -111,13 +111,14 @@ class Interpreter:
 
     def counter_analysis(
         self,
-        article_analysis: ArticleAnalysis,
+        url: str,
+        article_analysis: Analysis,
         relevant: List[Article],
     ) -> ArticleAnalysis:
         points = "\n".join(
             [
                 self._point_template.format(point=vp.point)
-                for vp in article_analysis.analysis.view_points
+                for vp in article_analysis.view_points
             ]
         )
         related = "\n\n".join(
@@ -127,7 +128,7 @@ class Interpreter:
             ]
         )
         msg = self._gen_counter_template.format(
-            subject=article_analysis.analysis.subject, points=points, related=related
+            subject=article_analysis.subject, points=points, related=related
         )
         try:
             opposing_view = self._chat_model.invoke(
@@ -147,8 +148,8 @@ class Interpreter:
             error = str(e)
 
         return ArticleAnalysis(
-            article_url=article_analysis.article_url,
-            analysis=article_analysis.analysis,
+            article_url=url,
+            analysis=article_analysis,
             counter=analysis,
             error=error,
         )
@@ -177,85 +178,99 @@ class Interpreter:
         for url, analysis in analyses.items():
             try:
                 if re.match(self._sub_analysis_err_msg_header, analysis):
-                    analysis = None
                     raise ValueError(analysis)
 
-                analysis = Analysis.parse_xml(analysis)
+                parsed_analysis = Analysis.parse_xml(analysis)
                 error = None
             except Exception as e:
-                analysis = None
+                parsed_analysis = None
                 error = str(e)
 
             processed_analyses.append(
-                ArticleAnalysis(article_url=url, analysis=analysis, error=error)
+                ArticleAnalysis(article_url=url, analysis=parsed_analysis, error=error)
             )
 
         return processed_analyses
 
 
-class ViewPoint(BaseModel):
+class XmlParseNode:
+    @classmethod
+    def _get_tag(cls, tagname: str, soup: bs4.BeautifulSoup | Tag) -> Tag:
+        """
+        :raise ValueError: When the tag name cannot be found in the soup/tag provided
+        """
+        result = soup.find(tagname)
+        if result is not None and isinstance(result, Tag):
+            return result
+        else:
+            raise ValueError(f"Could not find {tagname} node")
+
+
+class ViewPoint(BaseModel, XmlParseNode):
     point: str
     arguments: List[str]
 
     @classmethod
     def parse_xml(cls, content: Tag) -> ViewPoint:
-        point = content.find("point").get_text()
-        arguments_soup: ResultSet[Tag] = content.find("arguments").find_all("argument")
-        arguments = [arg.get_text() for arg in arguments_soup]
+        point_node = cls._get_tag("point", content)
+        arguments_node = cls._get_tag("arguments", content)
+
+        point = point_node.get_text()
+        argument_nodes: ResultSet[Tag] = arguments_node.find_all("argument")
+        arguments = [arg.get_text() for arg in argument_nodes]
+
         return cls(point=point, arguments=arguments)
 
 
-class Analysis(BaseModel):
+class Analysis(BaseModel, XmlParseNode):
     subject: str
     view_points: List[ViewPoint]
 
     @classmethod
     def parse_xml(cls, content: str) -> Analysis:
         content_soup = bs4.BeautifulSoup(content, features="lxml")
-        analysis_report = content_soup.find("analysis")
-        subject = analysis_report.find("subject").get_text()
-        view_points = cls._parse_xml_viewpoints(
-            analysis_report.find("view-points").find_all("view-point")
-        )
+        analysis_node = cls._get_tag("analysis", content_soup)
+
+        subject_node = cls._get_tag("subject", analysis_node)
+        viewpoints_node = cls._get_tag("view-points", analysis_node)
+
+        subject = subject_node.get_text()
+        viewpoint_nodes = viewpoints_node.find_all("view-point")
+        view_points = [
+            ViewPoint.parse_xml(view_point) for view_point in viewpoint_nodes
+        ]
         return cls(subject=subject, view_points=view_points)
 
-    @classmethod
-    def _parse_xml_viewpoints(cls, view_points: ResultSet[Any]) -> List[ViewPoint]:
-        return [ViewPoint.parse_xml(view_point) for view_point in view_points]
 
-
-class Counter(BaseModel):
+class Counter(BaseModel, XmlParseNode):
     article_url: str
     original_view_point: str
     counter_view_point: str
 
     @classmethod
     def parse_xml(cls, content: Tag) -> Counter:
-        article_url = content.find("article-url").get_text()
-        original = content.find("original").get_text()
-        counter = content.find("other").get_text()
+        article_url = cls._get_tag("article-url", content).get_text()
+        original = cls._get_tag("original", content).get_text()
+        counter = cls._get_tag("other", content).get_text()
+
         return cls(
-            article_uuid=article_url,
+            article_url=article_url,
             original_view_point=original,
             counter_view_point=counter,
         )
 
 
-class CounterAnalysis(BaseModel):
+class CounterAnalysis(BaseModel, XmlParseNode):
     counters: List[Counter]
 
     @classmethod
     def parse_xml(cls, content: str) -> CounterAnalysis:
         content_soup = bs4.BeautifulSoup(content, features="lxml")
-        counters_soup = (
-            content_soup.find("analysis").find("counters").find_all("counter")
-        )
-        counters = cls._parse_xml_counters(counters_soup)
+        analysis_node = cls._get_tag("analysis", content_soup)
+        counters_node = cls._get_tag("counters", analysis_node)
+        counter_nodes = counters_node.find_all("counter")
+        counters = [Counter.parse_xml(counter) for counter in counter_nodes]
         return cls(counters=counters)
-
-    @classmethod
-    def _parse_xml_counters(cls, counters: ResultSet[Any]) -> List[Counter]:
-        return [Counter.parse_xml(counter) for counter in counters]
 
 
 class ArticleAnalysis(BaseModel):

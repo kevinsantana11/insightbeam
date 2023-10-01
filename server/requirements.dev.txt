@@ -11,6 +11,7 @@ charset-normalizer==3.2.0
 click==8.1.7
 cssselect==1.2.0
 dataclasses-json==0.6.1
+debugpy==1.8.0
 exceptiongroup==1.1.3
 fastapi==0.103.1
 feedfinder2==0.0.4
@@ -65,6 +66,8 @@ tinysegmenter==0.3
 tldextract==3.6.0
 tomli==2.0.1
 tqdm==4.66.1
+types-beautifulsoup4==4.12.0.6
+types-html5lib==1.1.11.15
 typing-inspect==0.9.0
 typing_extensions==4.8.0
 urllib3==2.0.5

@@ -5,10 +5,10 @@ from logging import Logger
 from typing import Any, Callable, List, TypeVar
 
 from pydantic import BaseModel
-from whoosh.fields import ID, TEXT, Schema
-from whoosh.index import Index, create_in, exists_in, open_dir
-from whoosh.qparser import OrGroup, QueryParser
-from whoosh.writing import IndexWriter
+from whoosh.fields import ID, TEXT, Schema  # type: ignore[import]
+from whoosh.index import Index, create_in, exists_in, open_dir  # type: ignore[import]
+from whoosh.qparser import OrGroup, QueryParser  # type: ignore[import]
+from whoosh.writing import IndexWriter  # type: ignore[import]
 
 from insightbeam.config import Configuration
 

@@ -5,14 +5,14 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from insightbeam.api import app as _app
-from insightbeam.config import Configuration
-from insightbeam.dal.schemas.sql import SourceItem as DbSourceItem
-from insightbeam.dal.schemas.sql import get_session_supplier, initialize_engine
-from insightbeam.dependency_manager import manager
-from insightbeam.engine.interpreter import Interpreter
-from insightbeam.engine.rssreader import RSSReader
-from insightbeam.engine.search import Input, SearchEngine
+from .api import app as _app
+from .config import Configuration
+from .dal.schemas.sql import SourceItem as DbSourceItem
+from .dal.schemas.sql import get_session_supplier, initialize_engine
+from .dependency_manager import manager
+from .engine.interpreter import Interpreter
+from .engine.rssreader import RSSReader
+from .engine.search import Input, SearchEngine
 
 _logger = logging.getLogger(__name__)
 

@@ -34,7 +34,7 @@ lint:
 
 static-analysis:
 	echo "\033[92m==> Statically Analyzing Code! ==>\033[0m"
-	mypy insightbeam | echo "done"
+	mypy insightbeam
 
 sort:
 	echo "\033[92m==> Sorting Imports! ==>\033[0m"

@@ -133,7 +133,7 @@ def get_source_items(source_id: int, session: Session = Depends(m.inject(Session
 
 
 @app.get("/items/{item_id}", response_model=sch.GetSourceItemResponse)
-def get_source_item(item_id: str, session: Session = Depends(m.inject(Session))):
+def get_source_item(item_id: int, session: Session = Depends(m.inject(Session))):
     try:
         (uuid, title, content, url, source_uuid) = session.execute(
             select(
@@ -162,7 +162,7 @@ def get_source_item(item_id: str, session: Session = Depends(m.inject(Session)))
 
 @app.get("/items/{item_id}/analyze", response_model=sch.GetSourceItemAnalysisResponse)
 def get_source_item_analysis(
-    item_id: str,
+    item_id: int,
     session: Session = Depends(m.inject(Session)),
     interpreter: Interpreter = Depends(m.inject(Interpreter)),
 ):
@@ -172,7 +172,7 @@ def get_source_item_analysis(
 
 @app.get("/items/{item_id}/counters", response_model=sch.GetSourceItemAnalysisResponse)
 def get_source_item_counters(
-    item_id: str,
+    item_id: int,
     session: Session = Depends(m.inject(Session)),
     interpreter: Interpreter = Depends(m.inject(Interpreter)),
     sengine: SearchEngine = Depends(m.inject(SearchEngine)),
@@ -219,7 +219,7 @@ def _get_analysis(item_id: int, session: Session, interpreter: Interpreter):
 
 
 def _get_counter_analysis(
-    item_id: str, session: Session, interpreter: Interpreter, sengine: SearchEngine
+    item_id: int, session: Session, interpreter: Interpreter, sengine: SearchEngine
 ):
     row = session.execute(
         select(DbSourceItemCounterAnalysis.analysis).where(
@@ -245,7 +245,10 @@ def _get_counter_analysis(
                 )
 
             articles.append(Article(title=doc.article_title, content=content, url=url))
-        analysis = interpreter.counter_analysis(article_analysis, articles)
+
+        analysis = interpreter.counter_analysis(
+            url, article_analysis.analysis, articles
+        )
         analysis_item = DbSourceItemCounterAnalysis(
             analysis=analysis.model_dump_json(), source_item_uuid=item_id
         )
