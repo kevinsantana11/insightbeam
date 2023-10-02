@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .api import app as _app
 from .config import Configuration
-from .dal.schemas.sql import SourceItem as DbSourceItem
-from .dal.schemas.sql import get_session_supplier, initialize_engine
+from .dal import get_session_supplier, initialize_engine
+from .dal.schemas import SourceItem as DbSourceItem
 from .dependency_manager import manager
 from .engine.interpreter import Interpreter
 from .engine.rssreader import RSSReader
