@@ -123,7 +123,7 @@ def get_source_item_counters(
         )
 
         if counter_analysis.error is not None or not isinstance(
-            counter_analysis.analysis, CounterAnalysis
+            counter_analysis.counter, CounterAnalysis
         ):
             error = (
                 counter_analysis.error
@@ -133,5 +133,5 @@ def get_source_item_counters(
 
         dal.add_source_item_counter_analysis(session, item_id, counter_analysis)
     else:
-        analysis = ArticleAnalysis(**json.loads(counter_analysis_str))
-    return analysis
+        counter_analysis = ArticleAnalysis(**json.loads(counter_analysis_str))
+    return counter_analysis
