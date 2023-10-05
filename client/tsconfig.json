@@ -1,0 +1,10 @@
+{
+  "include": ["src/*"],
+  "compilerOptions": {
+    "alwaysStrict": true,
+    "pretty": true,
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true
+  }
+}

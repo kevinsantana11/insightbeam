@@ -1,0 +1,7 @@
+{
+  "prettier.insertPragma": true,
+  "prettier.enable": true,
+  "eslint.enable": true,
+  "editor.indentSize": "tabSize",
+  "editor.tabSize": 2
+}
